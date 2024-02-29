@@ -1,50 +1,39 @@
-const { MongoClient } = require('mongodb');
+#!/usr/bin/node
 
-const DB_HOST = process.env.DB_HOST || 'localhost';
-const DB_PORT = process.env.DB_PORT || 27017;
-const DB_DATABASE = process.env.DB_DATABASE || 'files_manager';
+const { createClient } = require('redis');
+const { promisify } = require('util');
 
-class DBClient {
+class RedisClient {
   constructor() {
-    this.client = null;
-    this.url = `mongodb://${DB_HOST}:${DB_PORT}/${DB_DATABASE}`;
-  }
-
-  async connect() {
-    try {
-      this.client = await MongoClient.connect(this.url, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      });
-      console.log('Connected to MongoDB');
-    } catch (err) {
-      console.error('MongoDB connection error:', err);
-      throw err;
-    }
+    this.client = createClient();
+    this.client.on('error', (err) => console.log(err));
+    this.connected = false;
+    this.client.on('connect', () => {
+      this.connected = true;
+    });
   }
 
   isAlive() {
-    return this.client?.isConnected();
+    return this.connected;
   }
 
-  async nbUsers() {
-    if (!this.client) {
-      throw new Error('Not connected to MongoDB');
-    }
-    const collection = this.client.db().collection('users');
-    const count = await collection.countDocuments({});
-    return count;
+  async get(key) {
+    const getAsync = promisify(this.client.get).bind(this.client);
+    const val = await getAsync(key);
+    return val;
   }
 
-  async nbFiles() {
-    if (!this.client) {
-      throw new Error('Not connected to MongoDB');
-    }
-    const collection = this.client.db().collection('files');
-    const count = await collection.countDocuments({});
-    return count;
+  async set(key, val, dur) {
+    const setAsync = promisify(this.client.set).bind(this.client);
+    await setAsync(key, val, 'EX', dur);
+  }
+
+  async del(key) {
+    const delAsync = promisify(this.client.del).bind(this.client);
+    await delAsync(key);
   }
 }
 
-const dbClient = new DBClient();
-module.exports = dbClient;
+const redisClient = new RedisClient();
+
+module.exports = redisClient;
